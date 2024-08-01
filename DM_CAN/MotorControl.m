@@ -110,7 +110,7 @@ classdef MotorControl < handle
             obj.send_data_frame(14) = Motor.SlaveID;
             obj.send_data_frame(15) = 3; % vel control need 0x200+canid
             data_buf = uint8(zeros(1, 8));
-            Pos_desired_uint8s = float_to_uint8s(Pos_des);
+            Pos_desired_uint8s = obj.float_to_uint8s(Pos_des);
             data_buf(1:4) = Pos_desired_uint8s;
             Vel_uint = uint16(Vel_des);
             ides_uint = uint16(i_des);
@@ -187,6 +187,7 @@ classdef MotorControl < handle
         function control_cmd(obj, Motor, cmd)
             data_buf = uint8([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd]);
             obj.send_data_frame(14) = uint8(Motor.SlaveID);
+            obj.send_data_frame(15)=0;
             obj.send_data_frame(22:29) = data_buf;
             write(obj.serial_, obj.send_data_frame,"uint8");
         end
@@ -206,6 +207,7 @@ classdef MotorControl < handle
             obj.send_data_frame(15) = 0x07;
             obj.send_data_frame(22:29) = data_buf;
             write(obj.serial_, obj.send_data_frame,"uint8");
+            obj.send_data_frame(15)=0;%用完改回来怕后面忘记了
         end
         
         function switchControlMode(obj, Motor, ControlMode)
@@ -230,7 +232,7 @@ classdef MotorControl < handle
             obj.send_data_frame(15) = 0x07;
             obj.send_data_frame(22:29) = data_buf;
             write(obj.serial_, obj.send_data_frame,"uint8");
-            
+            obj.send_data_frame(15)=0;%用完改回来怕后面忘记了
         end
         
         function change_control_PMAX(obj,Motor_Type,new_PMAX)
