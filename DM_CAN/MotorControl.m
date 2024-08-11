@@ -4,12 +4,14 @@ classdef MotorControl < handle
         motors_map
         send_data_frame
         Limit_param
+        data_save
     end
     
     methods
         function obj = MotorControl(COM, baudrate)
 
             obj.motors_map = containers.Map('KeyType','uint32', 'ValueType','any');
+            obj.data_save = [];
             %限制参数     PMAX VMAX TMAX  行为所代表的不同电机
             obj.Limit_param=[12.5,30,10; %DM4310
                          12.5,50,10; %DM4310_48V
@@ -19,8 +21,8 @@ classdef MotorControl < handle
                          12.5,45,40; %DM8006
                          12.5,45,54; %DM8009
                          ];
-            obj.serial_ = serialport(COM,baudrate,"Timeout",0.01);
-            obj.send_data_frame = uint8([0x55, 0xAA, 0x1e, 0x01, 0x01, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0x00, 0x08, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0x00]);
+            obj.serial_ = serialport(COM,baudrate,"Timeout",0.5);
+            obj.send_data_frame = uint8([0x55, 0xAA, 0x1e, 0x03, 0x01, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0x00, 0x08, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0x00]);
             flush(obj.serial_);
         end
         
@@ -41,7 +43,6 @@ classdef MotorControl < handle
             dq_uint = obj.float_to_uint(dq, -obj.Limit_param(MotorType,2), obj.Limit_param(MotorType,2), 12);
             tau_uint = obj.float_to_uint(tau, -obj.Limit_param(MotorType,3), obj.Limit_param(MotorType,3), 12);
             data_buf = uint8([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-
             data_buf(1) = bitand(bitshift(q_uint, -8),255);
             data_buf(2) = bitand(q_uint,255);
             data_buf(3) = bitshift(dq_uint, -4);
@@ -50,11 +51,7 @@ classdef MotorControl < handle
             data_buf(6) = bitshift(kd_uint, -4);
             data_buf(7) = bitor(bitshift(bitand(kd_uint, 15), 4), bitand(bitshift(tau_uint, -8), 15));
             data_buf(8) = bitand(tau_uint,255);
-            obj.send_data_frame(15) = 0;
-            obj.send_data_frame(14) = DM_Motor.SlaveID;
-            obj.send_data_frame(22:29) = data_buf;
-            write(obj.serial_, obj.send_data_frame,"uint8");
-            pause(0.001);
+            obj.send_data(DM_Motor.SlaveID,data_buf);
             obj.recv();
         end
         
@@ -65,15 +62,13 @@ classdef MotorControl < handle
                 disp('Motor ID not found');
                 return;
             end
-            obj.send_data_frame(14) = Motor.SlaveID;
-            obj.send_data_frame(15) = 0x01; % vel pos control need 0x100+canid
+            temp_id=hex2dec('100')+Motor.SlaveID;% vel pos control need 0x100+canid
             data_buf = uint8(zeros(1, 8));
             P_desired_uint8s = obj.float_to_uint8s(P_desired);
             V_desired_uint8s = obj.float_to_uint8s(V_desired);
             data_buf(1:4) = P_desired_uint8s;
             data_buf(5:8) = V_desired_uint8s;
-            obj.send_data_frame(22:29) = data_buf;
-            write(obj.serial_, obj.send_data_frame,"uint8");
+            obj.send_data(temp_id,data_buf);
             pause(0.001);
             obj.recv();
         end
@@ -86,14 +81,11 @@ classdef MotorControl < handle
                 disp('Motor ID not found');
                 return;
             end
-            obj.send_data_frame(14) = Motor.SlaveID;
-            obj.send_data_frame(15) = 2; % vel control need 0x200+canid
-            data_buf = uint8([0, 0, 0, 0]);
+            temp_id=hex2dec('200')+Motor.SlaveID; %vel control need 0x200+canid
+            data_buf = uint8([0, 0, 0, 0, 0, 0, 0, 0]);
             Vel_desired_uint8s = obj.float_to_uint8s(Vel_desired);
             data_buf(1:4) = Vel_desired_uint8s;
-            obj.send_data_frame(22:25) = data_buf;
-            write(obj.serial_, obj.send_data_frame,"uint8");
-            pause(0.001);
+            obj.send_data(temp_id,data_buf);
             obj.recv(); % receive the data from serial port
         end
         
@@ -107,8 +99,7 @@ classdef MotorControl < handle
                 disp('Motor ID not found');
                 return;
             end
-            obj.send_data_frame(14) = Motor.SlaveID;
-            obj.send_data_frame(15) = 3; % vel control need 0x200+canid
+            temp_id=hex2dec('300')+Motor.SlaveID; %pos force model is 0x300
             data_buf = uint8(zeros(1, 8));
             Pos_desired_uint8s = obj.float_to_uint8s(Pos_des);
             data_buf(1:4) = Pos_desired_uint8s;
@@ -119,7 +110,7 @@ classdef MotorControl < handle
             data_buf(7) = bitand(ides_uint, 255);
             data_buf(8) = bitshift(ides_uint, -8);
             obj.send_data_frame(22:29) = data_buf;
-            write(obj.serial_, obj.send_data_frame,"uint8");
+            obj.send_data(temp_id,data_buf);
             pause(0.001);
             obj.recv(); % receive the data from serial port
         end
@@ -146,16 +137,14 @@ classdef MotorControl < handle
         function recv(obj)
             read_num=obj.serial_.NumBytesAvailable;
             if read_num ~=0
-                data_recv = read(obj.serial_, read_num ,"uint8");
+                data_recv = [obj.data_save,read(obj.serial_, read_num ,"uint8")];
                 packets = obj.extract_packets(data_recv);
                 for i = 1:length(packets)
                     packet = packets{i};
-                    if length(packet) == 16
-                        data = packet(8:15);
-                        CANID = bitor(bitshift(uint32(packet(7)), 24), bitor(bitshift(uint32(packet(6)), 16), bitor(bitshift(uint32(packet(5)), 8), uint32(packet(4)))));
-                        CMD = packet(2);
-                        obj.process_packet(data, CANID, CMD);
-                    end
+                    data = packet(8:15);
+                    CANID = bitor(bitshift(uint32(packet(7)), 24), bitor(bitshift(uint32(packet(6)), 16), bitor(bitshift(uint32(packet(5)), 8), uint32(packet(4)))));
+                    CMD = packet(2);
+                    obj.process_packet(data, CANID, CMD);
                 end
             end
         end
@@ -186,30 +175,102 @@ classdef MotorControl < handle
         
         function control_cmd(obj, Motor, cmd)
             data_buf = uint8([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd]);
-            obj.send_data_frame(14) = uint8(Motor.SlaveID);
-            obj.send_data_frame(15)=0;
-            obj.send_data_frame(22:29) = data_buf;
-            write(obj.serial_, obj.send_data_frame,"uint8");
+            obj.send_data(uint16(Motor.SlaveID),data_buf);
         end
         
-        function read_motor_param(obj, Motor, RID)
+        function read_RID_param(obj, Motor, RID)
             data_buf = uint8([uint8(Motor.SlaveID), 0, 51, uint8(RID), 0, 0, 0, 0]);
-            obj.send_data_frame(14) = 255;
-            obj.send_data_frame(15) = 7;
-            obj.send_data_frame(22:29) = data_buf;
-            write(obj.serial_, obj.send_data_frame,"uint8");
+            obj.send_data(0x7FF,data_buf);
+            pause(0.05);
+        end
+
+        function param = read_motor_param(obj, Motor, RID)
+            % read only the RID of the motor 读取电机的内部信息例如 版本号等
+            % :param Motor: Motor object 电机对象
+            % :param RID: DM_variable 电机参数
+            % :return: 电机参数的值
+        
+            obj.read_RID_param(Motor, uint8(RID));
+            pause(0.2);
+            obj.recv_set_param_data();
+            Can_id=uint32(Motor.SlaveID);
+            if isKey(obj.motors_map, Can_id)
+               param=obj.motors_map(Can_id).getParam(uint8(RID));
+            else
+                param = [];
+            end
         end
         
+        function recv_set_param_data(obj)
+            read_num=obj.serial_.NumBytesAvailable;
+            if read_num ~=0
+                data_recv = [obj.data_save,read(obj.serial_, read_num ,"uint8")];
+                packets = obj.extract_packets(data_recv);
+                for i = 1:length(packets)
+                    packet = packets{i};
+                    data = packet(8:15);
+                    CANID = bitor(bitshift(uint32(packet(7)), 24), bitor(bitshift(uint32(packet(6)), 16), bitor(bitshift(uint32(packet(5)), 8), uint32(packet(4)))));
+                    CMD = packet(2);
+                    obj.process_set_param_packet(data, CANID, CMD);
+                end
+            end
+        end
+
+        function process_set_param_packet(obj, data, CANID, CMD)
+            if CMD == 0x11 && (data(3) == 0x33 || data(3) == 0x55)
+                masterid_temp = bitshift(data(2), 8) + data(1);
+                if isKey(obj.motors_map, CANID) || isKey(obj.motors_map, masterid_temp)
+                    RID = uint8(data(4));
+                    % 读取参数得到的数据
+                    if obj.is_in_ranges(RID)
+                        % uint32类型
+                        num_uint32 = obj.uint8s_to_uint32(data(5), data(6), data(7), data(8));
+                        obj.motors_map(CANID).saveParam(RID,num_uint32);
+                    else
+                        % float类型
+                        num_float = obj.uint8s_to_float(data(5), data(6), data(7), data(8));
+                        obj.motors_map(CANID).saveParam(RID,num_float);
+                    end
+                end
+            end
+        end
+
         function write_motor_param(obj, Motor, RID, data)
-            data_buf = uint8([uint8(Motor.SlaveID), 0, 85, uint8(RID), 0, 0, 0, 0]);
-            data_buf(5:8) = data;
-            obj.send_data_frame(14) = 0xFF;
-            obj.send_data_frame(15) = 0x07;
-            obj.send_data_frame(22:29) = data_buf;
-            write(obj.serial_, obj.send_data_frame,"uint8");
-            obj.send_data_frame(15)=0;%用完改回来怕后面忘记了
+            data_buf = uint8([Motor.SlaveID, 0x00, 0x55, RID, 0x00, 0x00, 0x00, 0x00]);
+            if ~obj.is_in_ranges(RID)
+                % data is float
+                uint8s=obj.float_to_uint8s(data);
+                data_buf(5:8)=uint8s(1:4);
+            else
+                % data is int
+                uint8s=obj.uint32_to_uint8s(data);
+                data_buf(5:8)=uint8s(1:4);
+            end
+            obj.send_data(0x7FF, data_buf);
         end
         
+        function success = change_motor_param(obj, Motor, RID, data)
+            % change the RID of the motor 改变电机的参数
+            % :param Motor: Motor object 电机对象
+            % :param RID: DM_variable 电机参数
+            % :param data: 电机参数的值
+            % :return: true or false ,true means success, false means fail
+            RID_change=uint8(RID);
+            obj.write_motor_param(Motor, RID_change, data);
+            pause(0.1);
+            obj.recv_set_param_data();
+            
+            if isKey(obj.motors_map, Motor.SlaveID)
+                if abs(obj.motors_map(Motor.SlaveID).getParam(RID_change)-data)<0.1
+                    success = true;
+                else
+                    success = false;
+                end
+            else
+                success = false;
+            end
+        end
+
         function switchControlMode(obj, Motor, ControlMode)
             % switch the control mode of the motor 切换电机控制模式
             % :param Motor: Motor object 电机对象
@@ -228,13 +289,21 @@ classdef MotorControl < handle
         
         function save_motor_param(obj, Motor)
             data_buf = uint8([uint8(Motor.SlaveID), 0, 0xAA, 0, 0, 0, 0, 0]);
-            obj.send_data_frame(14) = 0xFF;
-            obj.send_data_frame(15) = 0x07;
-            obj.send_data_frame(22:29) = data_buf;
-            write(obj.serial_, obj.send_data_frame,"uint8");
-            obj.send_data_frame(15)=0;%用完改回来怕后面忘记了
+            obj.send_data(0x7FF,data_buf);
+            pause(0.05);
         end
         
+        function send_data(obj, motorid, data)
+            % send data to the motor 发送数据到电机
+            % :param motorid:
+            % :param data:
+            % :return:
+            obj.send_data_frame(14) = bitand(motorid, 255); % motorid & 0xff
+            obj.send_data_frame(15) = bitshift(motorid, -8); % motorid >> 8
+            obj.send_data_frame(22:29) = data;
+            write(obj.serial_, obj.send_data_frame, 'uint8');
+        end
+
         function change_control_PMAX(obj,Motor_Type,new_PMAX)
             %这是修改MotorControl类中电机对应的PMAX，不修改电机内部的
             obj.Limit_param(uint32(Motor_Type),1)=new_PMAX;
@@ -270,37 +339,65 @@ classdef MotorControl < handle
             data_norm = double(x) / ((2^bits) - 1);
             float_val = single(data_norm * span + min_val);
         end
-    
+        
+        function result = is_in_ranges(obj,number)
+            % check if the number is in the range of uint32
+            % :param number: The number to check
+            % :return: true if the number is in the specified ranges, false otherwise
+            if (number >= 7 && number <= 10) || (number >= 13 && number <= 16) || (number >= 35 && number <= 36)
+                result = true;
+            else
+                result = false;
+            end
+        end
+
+        function result = uint8s_to_uint32(obj,byte1, byte2, byte3, byte4)
+            % Pack the four uint8 values into a single uint32 value in little-endian order
+            result = uint32(byte1) + bitshift(uint32(byte2), 8) + bitshift(uint32(byte3), 16) + bitshift(uint32(byte4), 24);
+        end
+
+        function result = uint8s_to_float(obj,byte1, byte2, byte3, byte4)
+            % Pack the four uint8 values into a single float value in little-endian order
+            packed = typecast(uint8([byte1, byte2, byte3, byte4]), 'single');
+            result = packed;
+        end
+
         function uint8s = float_to_uint8s(obj,value)
             % Pack the float into 4 bytes
             packed = typecast(single(value), 'uint8');
             % Return the bytes as a row vector
             uint8s = reshape(packed, 1, []);
         end
+
+        function uint8s = uint32_to_uint8s(obj,uint32_value)
+            % Convert uint32 to 4 uint8 values in little-endian order
+            uint8_array = typecast(uint32(uint32_value), 'uint8');
+            % Ensure the array is in little-endian order
+            uint8s = reshape(uint8_array, 1, []);
+        end
     
-        function packets = extract_packets(obj,data)
-            % Extract packets from the serial data
-            packets = {};
+        %------------------------------------------------------
+        function frames = extract_packets(obj,data)
+            frames = {};
             header = hex2dec('AA');
             tail = hex2dec('55');
-            i = 1;
-            while i <= length(data) - 1
-                % Find the start of a packet
-                if data(i) == header
-                    start_index = i;
-                    % Look for the end of the packet
+            frame_length = 16;
+            i = 0;
+            remainder_pos = 0;
+        
+            while i <= length(data) - frame_length
+                if data(i + 1) == header && data(i + frame_length) == tail
+                    frame = data(i + 1:i + frame_length);
+                    frames{end + 1} = frame;
+                    i = i + frame_length;
+                    remainder_pos = i;
+                else
                     i = i + 1;
-                    while i <= length(data) && data(i) ~= tail
-                        i = i + 1;
-                    end
-                    % If a tail is found, extract the packet
-                    if i <= length(data) && data(i) == tail
-                        end_index = i;
-                        packets{end + 1} = data(start_index:end_index);
-                    end
                 end
-                i = i + 1;
             end
+            obj.data_save=data(remainder_pos+1:end);
         end
+        %------------------------------------------------------------
+
     end
 end
