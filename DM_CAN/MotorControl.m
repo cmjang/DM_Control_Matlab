@@ -20,6 +20,8 @@ classdef MotorControl < handle
                          12.5,45,20; %DM6006
                          12.5,45,40; %DM8006
                          12.5,45,54; %DM8009
+                         12.5,25,200;%DM10010L
+                         12.5,20,200;%DM10010
                          ];
             obj.serial_ = serialport(COM,baudrate,"Timeout",0.5);
             obj.send_data_frame = uint8([0x55, 0xAA, 0x1e, 0x03, 0x01, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0x00, 0x08, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0x00]);
@@ -69,7 +71,6 @@ classdef MotorControl < handle
             data_buf(1:4) = P_desired_uint8s;
             data_buf(5:8) = V_desired_uint8s;
             obj.send_data(temp_id,data_buf);
-            pause(0.001);
             obj.recv();
         end
 
@@ -111,7 +112,6 @@ classdef MotorControl < handle
             data_buf(8) = bitshift(ides_uint, -8);
             obj.send_data_frame(22:29) = data_buf;
             obj.send_data(temp_id,data_buf);
-            pause(0.001);
             obj.recv(); % receive the data from serial port
         end
         
@@ -120,18 +120,21 @@ classdef MotorControl < handle
             % 最好在上电后几秒后再使能电机
             % :param Motor: Motor object 电机对象
             obj.control_cmd(Motor, uint8(0xFC));
+            pause(0.01);
         end
         
         function disable(obj, Motor)
             % disable motor 失能电机
             % :param Motor: Motor object 电机对象
             obj.control_cmd(Motor, uint8(0xFD));
+            pause(0.01);
         end
         
-        function zero_position(obj, Motor)
+        function set_zero_position(obj, Motor)
             % set the zero position of the motor 设置电机0位
             % :param Motor: Motor object 电机对象
             obj.control_cmd(Motor, uint8(0xFE));
+            pause(0.01);
         end
         
         function recv(obj)
@@ -149,20 +152,6 @@ classdef MotorControl < handle
             end
         end
 
-      function process_packet(obj, data, CANID, CMD)
-            if CMD == 17
-                if isKey(obj.motors_map, CANID)
-                    q_uint = bitor(bitshift(uint16(data(2)), 8), uint16(data(3)));
-                    dq_uint = bitor(bitshift(uint16(data(4)), 4), bitshift(uint16(data(5)), -4));
-                    tau_uint = bitor(bitshift(bitand(uint16(data(5)), 15), 8), uint16(data(6)));
-                    MotorType_recv = obj.motors_map(CANID).MotorType;
-                    recv_q = obj.uint_to_float(q_uint, -obj.Limit_param(MotorType_recv,1), obj.Limit_param(MotorType_recv,1), 16);
-                    recv_dq = obj.uint_to_float(dq_uint, -obj.Limit_param(MotorType_recv,2), obj.Limit_param(MotorType_recv,2), 12);
-                    recv_tau = obj.uint_to_float(tau_uint, -obj.Limit_param(MotorType_recv,3), obj.Limit_param(MotorType_recv,3), 12);
-                    obj.motors_map(CANID).recv_data(recv_q, recv_dq, recv_tau);
-                end
-            end
-        end
         
         function addMotor(obj, Motor)
             % add motor to the motor control object 添加电机到电机控制对象
@@ -173,15 +162,10 @@ classdef MotorControl < handle
             end
         end
         
-        function control_cmd(obj, Motor, cmd)
-            data_buf = uint8([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd]);
-            obj.send_data(uint16(Motor.SlaveID),data_buf);
-        end
-        
         function read_RID_param(obj, Motor, RID)
             data_buf = uint8([uint8(Motor.SlaveID), 0, 51, uint8(RID), 0, 0, 0, 0]);
             obj.send_data(0x7FF,data_buf);
-            pause(0.05);
+            pause(0.01);
         end
 
         function param = read_motor_param(obj, Motor, RID)
@@ -191,7 +175,7 @@ classdef MotorControl < handle
             % :return: 电机参数的值
         
             obj.read_RID_param(Motor, uint8(RID));
-            pause(0.2);
+            pause(0.1);
             obj.recv_set_param_data();
             Can_id=uint32(Motor.SlaveID);
             if isKey(obj.motors_map, Can_id)
@@ -214,39 +198,6 @@ classdef MotorControl < handle
                     obj.process_set_param_packet(data, CANID, CMD);
                 end
             end
-        end
-
-        function process_set_param_packet(obj, data, CANID, CMD)
-            if CMD == 0x11 && (data(3) == 0x33 || data(3) == 0x55)
-                masterid_temp = bitshift(data(2), 8) + data(1);
-                if isKey(obj.motors_map, CANID) || isKey(obj.motors_map, masterid_temp)
-                    RID = uint8(data(4));
-                    % 读取参数得到的数据
-                    if obj.is_in_ranges(RID)
-                        % uint32类型
-                        num_uint32 = obj.uint8s_to_uint32(data(5), data(6), data(7), data(8));
-                        obj.motors_map(CANID).saveParam(RID,num_uint32);
-                    else
-                        % float类型
-                        num_float = obj.uint8s_to_float(data(5), data(6), data(7), data(8));
-                        obj.motors_map(CANID).saveParam(RID,num_float);
-                    end
-                end
-            end
-        end
-
-        function write_motor_param(obj, Motor, RID, data)
-            data_buf = uint8([Motor.SlaveID, 0x00, 0x55, RID, 0x00, 0x00, 0x00, 0x00]);
-            if ~obj.is_in_ranges(RID)
-                % data is float
-                uint8s=obj.float_to_uint8s(data);
-                data_buf(5:8)=uint8s(1:4);
-            else
-                % data is int
-                uint8s=obj.uint32_to_uint8s(data);
-                data_buf(5:8)=uint8s(1:4);
-            end
-            obj.send_data(0x7FF, data_buf);
         end
         
         function success = change_motor_param(obj, Motor, RID, data)
@@ -271,12 +222,27 @@ classdef MotorControl < handle
             end
         end
 
+        function success = change_motor_param_And_save(obj, Motor, RID, data)
+            flag =change_motor_param(obj, Motor, RID, data);
+            obj.save_motor_param(Motor,RID);
+            success = flag;
+        end
+
         function switchControlMode(obj, Motor, ControlMode)
             % switch the control mode of the motor 切换电机控制模式
             % :param Motor: Motor object 电机对象
             % :param ControlMode: Control_Type 电机控制模式 example:MIT:Control_Type.MIT MIT模式
             write_data = uint8([uint8(ControlMode), 0, 0, 0]);
             obj.write_motor_param(Motor, 10, write_data);
+        end
+
+        function switchControlMode_And_save(obj, Motor, ControlMode)
+            % switch the control mode of the motor and save it to flash
+            % 切换电机控制模式并且保存参数进flash
+            % :param Motor: Motor object 电机对象
+            % :param ControlMode: Control_Type 电机控制模式 example:MIT:Control_Type.MIT MIT模式
+            obj.switchControlMode(Motor, ControlMode);
+            obj.save_motor_param(Motor,10);
         end
         
         function changeMasterID(obj, Motor, MasterID)
@@ -287,22 +253,17 @@ classdef MotorControl < handle
             obj.write_motor_param(Motor, 7, write_data);
         end
         
-        function save_motor_param(obj, Motor)
-            data_buf = uint8([uint8(Motor.SlaveID), 0, 0xAA, 0, 0, 0, 0, 0]);
+        function save_motor_param(obj, Motor,RID)
+            % save the motor param to flash 保存寄存器参数进flash
+            % :param Motor: Motor object 电机对象
+            % :param MasterID: MasterID 主机ID
+            % :param RID: RID 寄存器
+            data_buf = uint8([uint8(Motor.SlaveID), 0, 0xAA, uint8(RID), 0, 0, 0, 0]);
             obj.send_data(0x7FF,data_buf);
-            pause(0.05);
+            pause(0.1);
         end
         
-        function send_data(obj, motorid, data)
-            % send data to the motor 发送数据到电机
-            % :param motorid:
-            % :param data:
-            % :return:
-            obj.send_data_frame(14) = bitand(motorid, 255); % motorid & 0xff
-            obj.send_data_frame(15) = bitshift(motorid, -8); % motorid >> 8
-            obj.send_data_frame(22:29) = data;
-            write(obj.serial_, obj.send_data_frame, 'uint8');
-        end
+       
 
         function change_control_PMAX(obj,Motor_Type,new_PMAX)
             %这是修改MotorControl类中电机对应的PMAX，不修改电机内部的
@@ -319,13 +280,42 @@ classdef MotorControl < handle
             obj.Limit_param(uint32(Motor_Type),3)=new_TMAX;
         end
         
-        function x = LIMIT_MIN_MAX(obj,x, min_val, max_val)
-            if x <= min_val
-                x = min_val;
-            elseif x > max_val
-                x = max_val;
+    end
+
+
+    %====================================================================================================
+    %下面为私有库函数
+    %follow function is private
+    methods (Access = private)
+
+            function frames = extract_packets(obj,data)
+                frames = {};
+                header = hex2dec('AA');
+                tail = hex2dec('55');
+                frame_length = 16;
+                i = 0;
+                remainder_pos = 0;
+            
+                while i <= length(data) - frame_length
+                    if data(i + 1) == header && data(i + frame_length) == tail
+                        frame = data(i + 1:i + frame_length);
+                        frames{end + 1} = frame;
+                        i = i + frame_length;
+                        remainder_pos = i;
+                    else
+                        i = i + 1;
+                    end
+                end
+                obj.data_save=data(remainder_pos+1:end);
             end
-        end
+
+            function x = LIMIT_MIN_MAX(obj,x, min_val, max_val)
+                if x <= min_val
+                    x = min_val;
+                elseif x > max_val
+                    x = max_val;
+                end
+            end
 
         function uint_val = float_to_uint(obj,x, x_min, x_max, bits)
             x = obj.LIMIT_MIN_MAX(x, x_min, x_max);
@@ -375,29 +365,71 @@ classdef MotorControl < handle
             % Ensure the array is in little-endian order
             uint8s = reshape(uint8_array, 1, []);
         end
-    
-        %------------------------------------------------------
-        function frames = extract_packets(obj,data)
-            frames = {};
-            header = hex2dec('AA');
-            tail = hex2dec('55');
-            frame_length = 16;
-            i = 0;
-            remainder_pos = 0;
+
+        function send_data(obj, motorid, data)
+            % send data to the motor 发送数据到电机
+            % :param motorid:
+            % :param data:
+            % :return:
+            obj.send_data_frame(14) = bitand(motorid, 255); % motorid & 0xff
+            obj.send_data_frame(15) = bitshift(motorid, -8); % motorid >> 8
+            obj.send_data_frame(22:29) = data;
+            write(obj.serial_, obj.send_data_frame, 'uint8');
+        end
         
-            while i <= length(data) - frame_length
-                if data(i + 1) == header && data(i + frame_length) == tail
-                    frame = data(i + 1:i + frame_length);
-                    frames{end + 1} = frame;
-                    i = i + frame_length;
-                    remainder_pos = i;
-                else
-                    i = i + 1;
+        function process_set_param_packet(obj, data, CANID, CMD)
+            if CMD == 0x11 && (data(3) == 0x33 || data(3) == 0x55)
+                masterid_temp = bitshift(data(2), 8) + data(1);
+                if isKey(obj.motors_map, CANID) || isKey(obj.motors_map, masterid_temp)
+                    RID = uint8(data(4));
+                    % 读取参数得到的数据
+                    if obj.is_in_ranges(RID)
+                        % uint32类型
+                        num_uint32 = obj.uint8s_to_uint32(data(5), data(6), data(7), data(8));
+                        obj.motors_map(CANID).saveParam(RID,num_uint32);
+                    else
+                        % float类型
+                        num_float = obj.uint8s_to_float(data(5), data(6), data(7), data(8));
+                        obj.motors_map(CANID).saveParam(RID,num_float);
+                    end
                 end
             end
-            obj.data_save=data(remainder_pos+1:end);
         end
-        %------------------------------------------------------------
+
+        function control_cmd(obj, Motor, cmd)
+            data_buf = uint8([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd]);
+            obj.send_data(uint16(Motor.SlaveID),data_buf);
+        end
+
+
+        function process_packet(obj, data, CANID, CMD)
+            if CMD == 17
+                if isKey(obj.motors_map, CANID)
+                    q_uint = bitor(bitshift(uint16(data(2)), 8), uint16(data(3)));
+                    dq_uint = bitor(bitshift(uint16(data(4)), 4), bitshift(uint16(data(5)), -4));
+                    tau_uint = bitor(bitshift(bitand(uint16(data(5)), 15), 8), uint16(data(6)));
+                    MotorType_recv = obj.motors_map(CANID).MotorType;
+                    recv_q = obj.uint_to_float(q_uint, -obj.Limit_param(MotorType_recv,1), obj.Limit_param(MotorType_recv,1), 16);
+                    recv_dq = obj.uint_to_float(dq_uint, -obj.Limit_param(MotorType_recv,2), obj.Limit_param(MotorType_recv,2), 12);
+                    recv_tau = obj.uint_to_float(tau_uint, -obj.Limit_param(MotorType_recv,3), obj.Limit_param(MotorType_recv,3), 12);
+                    obj.motors_map(CANID).recv_data(recv_q, recv_dq, recv_tau);
+                end
+            end
+        end
+
+        function write_motor_param(obj, Motor, RID, data)
+            data_buf = uint8([Motor.SlaveID, 0x00, 0x55, RID, 0x00, 0x00, 0x00, 0x00]);
+            if ~obj.is_in_ranges(RID)
+                % data is float
+                uint8s=obj.float_to_uint8s(data);
+                data_buf(5:8)=uint8s(1:4);
+            else
+                % data is int
+                uint8s=obj.uint32_to_uint8s(data);
+                data_buf(5:8)=uint8s(1:4);
+            end
+            obj.send_data(0x7FF, data_buf);
+        end
 
     end
 end
