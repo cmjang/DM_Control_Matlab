@@ -242,7 +242,7 @@ classdef MotorControl < handle
             % save all  param to flash 保存所有寄存器参数进flash
             % :param Motor: Motor object 电机对象
             % :param MasterID: MasterID 主机ID
-            data_buf = uint8([uint8(Motor.SlaveID), 0, 0xAA, uint8(RID), 0, 0, 0, 0]);
+            data_buf = uint8([uint8(Motor.SlaveID), 0, 0xAA, 0, 0, 0, 0, 0]);
             obj.disable();
             obj.send_data(0x7FF,data_buf);
             pause(0.1);
