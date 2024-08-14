@@ -5,12 +5,12 @@ motor2=Motor(DM_Motor_Type.DM4310, 0x02, 0x12);
 MotorControl1 = MotorControl('COM8',921600);%串口号和波特率
 MotorControl1.addMotor(motor1);
 MotorControl1.addMotor(motor2);
-MotorControl1.enable(motor1);
-MotorControl1.enable(motor2);
 MotorControl1.switchControlMode(motor1,Control_Type.VEL);
 MotorControl1.switchControlMode(motor2,Control_Type.POS_VEL);
-MotorControl1.save_motor_param(motor1,DM_Reg.CTRL_MODE);
-MotorControl1.save_motor_param(motor2,DM_Reg.CTRL_MODE);
+MotorControl1.save_motor_param(motor1);
+MotorControl1.save_motor_param(motor2);
+MotorControl1.enable(motor1);%使能电机要放在最后
+MotorControl1.enable(motor2);
 motors = {motor1, motor2};
 for i = 1:length(motors)
     motor = motors{i};

@@ -40,7 +40,9 @@ MotorControl1 = MotorControl('COM8',921600);%串口号和波特率
 
 **目前库函数中都没有延迟，每如果控制6个电机用一个usb转can，建议在控制指令后再加2ms延迟**
 
-添加电机是addMotor，然后使能电机是enable。使能完后建议加上1s的延迟
+添加电机是addMotor，然后使能电机是enable。
+
+**建议：如果要修改电机参数。建议使能放在最后**
 
 ```python
 MotorControl1.addMotor(motor1);
@@ -49,7 +51,16 @@ MotorControl1.enable(motor1);
 MotorControl1.enable(motor2);
 ```
 
-#### 3.1MIT模式
+#### 3.1设置电机零点
+
+将电机在失能状态下摆到需要设置为0点的位置，然后运行下面两行，电机将会将当前位置作为电机0点。
+
+```matlab
+MotorControl1.set_zero_position(Motor3)
+MotorControl1.set_zero_position(Motor6)
+```
+
+#### 3.2MIT模式
 
 使能电机后可以使用MIT模式控制，推荐用MIT模式控制。
 
@@ -59,7 +70,7 @@ MotorControl1.enable(motor2);
 MotorControl1.controlMIT(motor2,30,0.4,y*5,0,0);
 ```
 
-#### 3.2 位置速度模式
+#### 3.3 位置速度模式
 
 位置速度模式，第一个参数是电机对象，第二个是位置，第三个是转动速度。具体的参数介绍已经写了函数文档。
 
@@ -70,7 +81,7 @@ y=sin(index/100);
 MotorControl1.control_Pos_Vel(motor2,y*10,5);
 ```
 
-#### 3.3 速度模式
+#### 3.4 速度模式
 
 例子如下，第一个是电机对象，第二个是电机速度
 
@@ -81,7 +92,7 @@ MotorControl1.control_Vel(motor1, y*10);
 
 目前达妙的新固件支持切换
 
-#### 3.4力位混合模式
+#### 3.5力位混合模式
 
 第一个是电机对象，第二个是电机位置，第三个是电机速度范围是0-10000，第四个是电机电流范围为0-10000。具体详细请查看达妙文档
 
@@ -93,7 +104,7 @@ MotorControl1.control_pos_force(motor1, 10, 1000,100)
 
 ### 4.电机内部参数更改
 
-达妙电机新固件支持使用can进行电机模式修改，以及修改其他参数等操作。要求版本号5013及以上。具体请咨询达妙客服。
+达妙电机新固件支持使用can进行电机模式修改，以及修改其他参数等操作。要求版本号5013及以上。具体请咨询达妙客服。**请注意所有保存参数、修改参数。请在失能模式下修改！！**
 
 #### 4.1电机控制模式更改
 
@@ -108,25 +119,15 @@ if MotorControl1.switchControlMode(motor2,Control_Type.POS_VEL)
 end
 ```
 
-**如果要保持电机控制模式可以使用下面的带保持功能的函数**
-
-```python
-if MotorControl1.switchControlMode_And_save(motor1,Control_Type.VEL)
-    disp("change control type to VEL success!");
-end
-
-if MotorControl1.switchControlMode_And_save(motor2,Control_Type.POS_VEL)
-    disp("change control type to POS_VEL success!");
-end
-```
+**如果要保持电机控制模式，需要最后保存参数**
 
 #### 4.2保存参数
 
-默认电机修改模式等操作后参数不会保存到flash中，需要使用命令如下进行保存至电机的flash中。修改了一个参数，保存一个参数。例子如下
+默认电机修改模式等操作后参数不会保存到flash中，需要使用命令如下进行保存至电机的flash中。这一个例子如下。**请注意这一个代码就把所有修改的都保存到Motor1的flash中，并且请在失能模式下进行修改**，该函数内部有自动失能的代码，防止电机在使能模式下无法保存参数。
 
 ```matlab
-MotorControl1.save_motor_param(motor1,DM_Reg.CTRL_MODE);
-MotorControl1.save_motor_param(motor2,DM_Reg.CTRL_MODE);
+MotorControl1.save_motor_param(motor1);
+MotorControl1.save_motor_param(motor2);
 ```
 
 #### 4.3 读取内部寄存器参数
@@ -169,16 +170,6 @@ disp(['PMAX',num2str(motor1.getParam(DM_variable.PMAX))]);
 
 ```matlab
 if MotorControl1.change_motor_param(motor,DM_Reg.UV_Value,12.6)
-   disp('change UV_Value success!!!!');
-end
-#上面的代码是仅仅修改了参数，没有保存到flash中，下面的代码可以保存到电机flash中
-MotorControl1.save_motor_param(Motor1,DM_Reg.KP_APR)
-```
-
-**下面的可以修改并且保存**
-
-```matlab
-if MotorControl1.change_motor_param_And_save(motor,DM_Reg.UV_Value,12.6)
    disp('change UV_Value success!!!!');
 end
 ```

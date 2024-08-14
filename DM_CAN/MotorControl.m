@@ -222,27 +222,12 @@ classdef MotorControl < handle
             end
         end
 
-        function success = change_motor_param_And_save(obj, Motor, RID, data)
-            flag =change_motor_param(obj, Motor, RID, data);
-            obj.save_motor_param(Motor,RID);
-            success = flag;
-        end
-
         function switchControlMode(obj, Motor, ControlMode)
             % switch the control mode of the motor 切换电机控制模式
             % :param Motor: Motor object 电机对象
             % :param ControlMode: Control_Type 电机控制模式 example:MIT:Control_Type.MIT MIT模式
             write_data = uint8([uint8(ControlMode), 0, 0, 0]);
             obj.write_motor_param(Motor, 10, write_data);
-        end
-
-        function switchControlMode_And_save(obj, Motor, ControlMode)
-            % switch the control mode of the motor and save it to flash
-            % 切换电机控制模式并且保存参数进flash
-            % :param Motor: Motor object 电机对象
-            % :param ControlMode: Control_Type 电机控制模式 example:MIT:Control_Type.MIT MIT模式
-            obj.switchControlMode(Motor, ControlMode);
-            obj.save_motor_param(Motor,10);
         end
         
         function changeMasterID(obj, Motor, MasterID)
@@ -253,12 +238,12 @@ classdef MotorControl < handle
             obj.write_motor_param(Motor, 7, write_data);
         end
         
-        function save_motor_param(obj, Motor,RID)
-            % save the motor param to flash 保存寄存器参数进flash
+        function save_motor_param(obj, Motor)
+            % save all  param to flash 保存所有寄存器参数进flash
             % :param Motor: Motor object 电机对象
             % :param MasterID: MasterID 主机ID
-            % :param RID: RID 寄存器
             data_buf = uint8([uint8(Motor.SlaveID), 0, 0xAA, uint8(RID), 0, 0, 0, 0]);
+            obj.disable();
             obj.send_data(0x7FF,data_buf);
             pause(0.1);
         end
