@@ -120,7 +120,8 @@ classdef MotorControl < handle
             % 最好在上电后几秒后再使能电机
             % :param Motor: Motor object 电机对象
             obj.control_cmd(Motor, uint8(0xFC));
-            pause(0.01);
+            pause(0.1);
+            obj.recv();
         end
 
         function enable_old(obj,Motor,ControlMode)
@@ -130,21 +131,24 @@ classdef MotorControl < handle
             data_buf = uint8([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, cmd]);
             motor_id=bitshift(uint32(ControlMode)-1,2)+Motor.SlaveID;
             obj.send_data(motor_id,data_buf);
-            pause(0.01);
+            pause(0.1);
+            obj.recv();
         end
         
         function disable(obj, Motor)
             % disable motor 失能电机
             % :param Motor: Motor object 电机对象
             obj.control_cmd(Motor, uint8(0xFD));
-            pause(0.01);
+            pause(0.1);
+            obj.recv();
         end
         
         function set_zero_position(obj, Motor)
             % set the zero position of the motor 设置电机0位
             % :param Motor: Motor object 电机对象
             obj.control_cmd(Motor, uint8(0xFE));
-            pause(0.01);
+            pause(0.1);
+            obj.recv();
         end
         
         function recv(obj)
@@ -232,11 +236,6 @@ classdef MotorControl < handle
             end
         end
 
-        function success = change_motor_param_And_save(obj, Motor, RID, data)
-            flag =change_motor_param(obj, Motor, RID, data);
-            obj.save_motor_param(Motor,RID);
-            success = flag;
-        end
 
         function success=switchControlMode(obj, Motor, ControlMode)
             % switch the control mode of the motor 切换电机控制模式
@@ -402,20 +401,32 @@ classdef MotorControl < handle
         
         function process_set_param_packet(obj, data, CANID, CMD)
             if CMD == 0x11 && (data(3) == 0x33 || data(3) == 0x55)
-                masterid_temp = bitshift(data(2), 8) + data(1);
-                if isKey(obj.motors_map, CANID) || isKey(obj.motors_map, masterid_temp)
-                    RID = uint8(data(4));
-                    % 读取参数得到的数据
-                    if obj.is_in_ranges(RID)
-                        % uint32类型
-                        num_uint32 = obj.uint8s_to_uint32(data(5), data(6), data(7), data(8));
-                        obj.motors_map(CANID).saveParam(RID,num_uint32);
+                canid_temp = bitshift(data(2), 8) + data(1);
+                canid=CANID;
+                if(CANID==0)
+                    canid=canid_temp;
+                end
+
+                if(~isKey(obj.motors_map, canid))
+                    if(~isKey(obj.motors_map, canid_temp))
+                        return;
                     else
-                        % float类型
-                        num_float = obj.uint8s_to_float(data(5), data(6), data(7), data(8));
-                        obj.motors_map(CANID).saveParam(RID,num_float);
+                        canid=canid_temp;
                     end
                 end
+
+                RID = uint8(data(4));
+                % 读取参数得到的数据
+                if obj.is_in_ranges(RID)
+                    % uint32类型
+                    num_uint32 = obj.uint8s_to_uint32(data(5), data(6), data(7), data(8));
+                    obj.motors_map(canid).saveParam(RID,num_uint32);
+                else
+                    % float类型
+                    num_float = obj.uint8s_to_float(data(5), data(6), data(7), data(8));
+                    obj.motors_map(canid).saveParam(RID,num_float);
+                end
+                
             end
         end
 
