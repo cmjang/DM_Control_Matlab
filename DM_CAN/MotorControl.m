@@ -44,7 +44,7 @@ classdef MotorControl < handle
             q_uint = obj.float_to_uint(q, -obj.Limit_param(MotorType,1), obj.Limit_param(MotorType,1), 16);
             dq_uint = obj.float_to_uint(dq, -obj.Limit_param(MotorType,2), obj.Limit_param(MotorType,2), 12);
             tau_uint = obj.float_to_uint(tau, -obj.Limit_param(MotorType,3), obj.Limit_param(MotorType,3), 12);
-            data_buf = uint8([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+            data_buf = uint8(zeros(1,8));
             data_buf(1) = bitand(bitshift(q_uint, -8),255);
             data_buf(2) = bitand(q_uint,255);
             data_buf(3) = bitshift(dq_uint, -4);
@@ -83,7 +83,7 @@ classdef MotorControl < handle
                 return;
             end
             temp_id=hex2dec('200')+Motor.SlaveID; %vel control need 0x200+canid
-            data_buf = uint8([0, 0, 0, 0, 0, 0, 0, 0]);
+            data_buf = uint8(zeros(1, 8));
             Vel_desired_uint8s = obj.float_to_uint8s(Vel_desired);
             data_buf(1:4) = Vel_desired_uint8s;
             obj.send_data(temp_id,data_buf);
@@ -258,31 +258,41 @@ classdef MotorControl < handle
             end
         end
 
-        function success=switchControlMode_And_save(obj, Motor, ControlMode)
-            % switch the control mode of the motor and save it to flash
-            % 切换电机控制模式并且保存参数进flash
-            % :param Motor: Motor object 电机对象
-            % :param ControlMode: Control_Type 电机控制模式 example:MIT:Control_Type.MIT MIT模式
-            obj.switchControlMode(Motor, ControlMode);
-            obj.save_motor_param(Motor,10);
-        end
         
         function changeMasterID(obj, Motor, MasterID)
             % change the MasterID of the motor 改变电机主机ID
             % :param Motor: Motor object 电机对象
             % :param MasterID: MasterID 主机ID
-            write_data = uint8([uint8(MasterID), 0, 0, 0]);
+            motorid = MasterID;
+            can_id_l = bitand(motorid, 255);
+            can_id_h = bitshift(motorid, -8);
+            write_data = uint8([uint8(can_id_l), uint8(can_id_h), 0, 0]);
             obj.write_motor_param(Motor, 7, write_data);
         end
         
-        function save_motor_param(obj, Motor,RID)
+        function save_motor_param(obj, Motor)
             % save the motor param to flash 保存寄存器参数进flash
             % :param Motor: Motor object 电机对象
             % :param MasterID: MasterID 主机ID
-            % :param RID: RID 寄存器
-            data_buf = uint8([uint8(Motor.SlaveID), 0, 0xAA, uint8(RID), 0, 0, 0, 0]);
+
+            % 获取电机的 ID 并计算 CAN 消息的高低字节
+            motorid = Motor.SlaveID;
+            can_id_l = bitand(motorid, 255);
+            can_id_h = bitshift(motorid, -8);
+            data_buf = uint8([can_id_l,can_id_h, 0xAA,1, 0, 0, 0, 0]);
             obj.send_data(0x7FF,data_buf);
             pause(0.1);
+        end
+
+        function refresh_motor_status(obj, Motor)
+            % refresh_motor_status 获得电机此时的状态信息
+            % :param Motor: Motor object 电机对象
+            motorid = Motor.SlaveID;
+            can_id_l = bitand(motorid, 255);
+            can_id_h = bitshift(motorid, -8);
+            data_buf = uint8([uint8(can_id_l),uint8(can_id_h), 0xCC, 0, 0, 0, 0, 0]);
+            obj.send_data(0x7FF,data_buf);
+            obj.recv();
         end
         
        
@@ -331,16 +341,7 @@ classdef MotorControl < handle
                 obj.data_save=data(remainder_pos+1:end);
             end
 
-            function x = LIMIT_MIN_MAX(obj,x, min_val, max_val)
-                if x <= min_val
-                    x = min_val;
-                elseif x > max_val
-                    x = max_val;
-                end
-            end
-
         function uint_val = float_to_uint(obj,x, x_min, x_max, bits)
-            x = obj.LIMIT_MIN_MAX(x, x_min, x_max);
             span = x_max - x_min;
             data_norm = (x - x_min) / span;
             uint_val = uint16(data_norm * ((2^bits) - 1));
@@ -452,7 +453,10 @@ classdef MotorControl < handle
         end
 
         function write_motor_param(obj, Motor, RID, data)
-            data_buf = uint8([Motor.SlaveID, 0x00, 0x55, RID, 0x00, 0x00, 0x00, 0x00]);
+            motorid = Motor.SlaveID;
+            can_id_l = bitand(motorid, 255);
+            can_id_h = bitshift(motorid, -8);
+            data_buf = uint8([can_id_l,can_id_h, 0x55, RID, 0x00, 0x00, 0x00, 0x00]);
             if ~obj.is_in_ranges(RID)
                 % data is float
                 uint8s=obj.float_to_uint8s(data);
