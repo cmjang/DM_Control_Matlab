@@ -221,18 +221,22 @@ classdef MotorControl < handle
             % :param data: 电机参数的值
             % :return: true or false ,true means success, false means fail
             RID_change=uint8(RID);
+            max_retries = 10;
+            retry_interval = 0.05; % retry times
             obj.write_motor_param(Motor, RID_change, data);
-            pause(0.1);
-            obj.recv_set_param_data();
-            
-            if isKey(obj.motors_map, Motor.SlaveID)
-                if abs(obj.motors_map(Motor.SlaveID).getParam(RID_change)-data)<0.1
-                    success = true;
-                else
-                    success = false;
+            for i = 1:max_retries
+                pause(retry_interval);
+                obj.recv_set_param_data();
+                
+                if isKey(obj.motors_map, Motor.SlaveID)
+                    if abs(obj.motors_map(Motor.SlaveID).getParam(RID_change)-data)<0.1
+                        success = true;
+                        return;
+                    else
+                        success = false;
+                        return;
+                    end
                 end
-            else
-                success = false;
             end
         end
 
@@ -242,19 +246,23 @@ classdef MotorControl < handle
             % :param Motor: Motor object 电机对象
             % :param ControlMode: Control_Type 电机控制模式 example:MIT:Control_Type.MIT MIT模式
             write_data = uint8([uint8(ControlMode), 0, 0, 0]);
-            RID=10;
+            max_retries = 10;
+            retry_interval = 0.05; % retry times
+            RID = 10;
             obj.write_motor_param(Motor, RID, write_data);
-            pause(0.1);
-            obj.recv_set_param_data();
-            
-            if isKey(obj.motors_map, Motor.SlaveID)
-                if obj.motors_map(Motor.SlaveID).getParam(RID)==uint8(ControlMode)
-                    success = true;
-                else
-                    success = false;
+            for i = 1:max_retries
+                pause(retry_interval);
+                obj.recv_set_param_data();
+                
+                if isKey(obj.motors_map, Motor.SlaveID)
+                    if obj.motors_map(Motor.SlaveID).getParam(RID)==uint8(ControlMode)
+                        success = true;
+                        return;
+                    else
+                        success = false;
+                        return;
+                    end
                 end
-            else
-                success = false;
             end
         end
 
@@ -439,17 +447,31 @@ classdef MotorControl < handle
 
         function process_packet(obj, data, CANID, CMD)
             if CMD == 17
-                if isKey(obj.motors_map, CANID)
-                    q_uint = bitor(bitshift(uint16(data(2)), 8), uint16(data(3)));
-                    dq_uint = bitor(bitshift(uint16(data(4)), 4), bitshift(uint16(data(5)), -4));
-                    tau_uint = bitor(bitshift(bitand(uint16(data(5)), 15), 8), uint16(data(6)));
-                    MotorType_recv = obj.motors_map(CANID).MotorType;
-                    recv_q = obj.uint_to_float(q_uint, -obj.Limit_param(MotorType_recv,1), obj.Limit_param(MotorType_recv,1), 16);
-                    recv_dq = obj.uint_to_float(dq_uint, -obj.Limit_param(MotorType_recv,2), obj.Limit_param(MotorType_recv,2), 12);
-                    recv_tau = obj.uint_to_float(tau_uint, -obj.Limit_param(MotorType_recv,3), obj.Limit_param(MotorType_recv,3), 12);
-                    obj.motors_map(CANID).recv_data(recv_q, recv_dq, recv_tau);
-                end
-            end
+                if CANID ~= 0
+                    if isKey(obj.motors_map, CANID)
+                        q_uint = bitor(bitshift(uint16(data(2)), 8), uint16(data(3)));
+                        dq_uint = bitor(bitshift(uint16(data(4)), 4), bitshift(uint16(data(5)), -4));
+                        tau_uint = bitor(bitshift(bitand(uint16(data(5)), 15), 8), uint16(data(6)));
+                        MotorType_recv = obj.motors_map(CANID).MotorType;
+                        recv_q = obj.uint_to_float(q_uint, -obj.Limit_param(MotorType_recv,1), obj.Limit_param(MotorType_recv,1), 16);
+                        recv_dq = obj.uint_to_float(dq_uint, -obj.Limit_param(MotorType_recv,2), obj.Limit_param(MotorType_recv,2), 12);
+                        recv_tau = obj.uint_to_float(tau_uint, -obj.Limit_param(MotorType_recv,3), obj.Limit_param(MotorType_recv,3), 12);
+                        obj.motors_map(CANID).recv_data(recv_q, recv_dq, recv_tau);
+                    end
+                else
+                    MasterID = bitand(data(1),15);
+                    if isKey(obj.motors_map, MasterID)
+                        q_uint = bitor(bitshift(uint16(data(2)), 8), uint16(data(3)));
+                        dq_uint = bitor(bitshift(uint16(data(4)), 4), bitshift(uint16(data(5)), -4));
+                        tau_uint = bitor(bitshift(bitand(uint16(data(5)), 15), 8), uint16(data(6)));
+                        MotorType_recv = obj.motors_map(MasterID).MotorType;
+                        recv_q = obj.uint_to_float(q_uint, -obj.Limit_param(MotorType_recv,1), obj.Limit_param(MotorType_recv,1), 16);
+                        recv_dq = obj.uint_to_float(dq_uint, -obj.Limit_param(MotorType_recv,2), obj.Limit_param(MotorType_recv,2), 12);
+                        recv_tau = obj.uint_to_float(tau_uint, -obj.Limit_param(MotorType_recv,3), obj.Limit_param(MotorType_recv,3), 12);
+                        obj.motors_map(MasterID).recv_data(recv_q, recv_dq, recv_tau);
+                    end
+                 end
+             end
         end
 
         function write_motor_param(obj, Motor, RID, data)

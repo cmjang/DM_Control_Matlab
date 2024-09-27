@@ -37,7 +37,7 @@ for index =1: 10000
     % MotorControl1.controlMIT(motor2,30,0.4,y*5,0,0);
     % disp(['Motor1--vel:',num2str(motor1.getVelocity()),'pos:',num2str(motor1.getPosition()),'tau:',num2str(motor1.getTorque())]);
     MotorControl1.refresh_motor_status(motor2);
-    disp(['Motor2--vel:',num2str(motor2.getVelocity()),'pos:',num2str(motor2.getPosition()),'tau:',num2str(motor2.getTorque())]);
+    %disp(['Motor2--vel:',num2str(motor2.getVelocity()),'pos:',num2str(motor2.getPosition()),'tau:',num2str(motor2.getTorque())]);
     pause(0.001);
 end
 disp("end");
