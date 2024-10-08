@@ -10,5 +10,8 @@ classdef DM_Motor_Type < uint32
         DM8009 (7)
         DM10010L(8)
         DM10010 (9)
+        DMH3510 (10)
+        DMH6215 (11)
+        DMG6220 (12)
     end
 end

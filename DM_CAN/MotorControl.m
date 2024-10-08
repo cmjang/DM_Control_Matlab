@@ -22,6 +22,9 @@ classdef MotorControl < handle
                          12.5,45,54; %DM8009
                          12.5,25,200;%DM10010L
                          12.5,20,200;%DM10010
+                         12.5,280,1; %H3510
+                         12.5,45,10; %DMG6215
+                         12.5,45,10; %DMH6220
                          ];
             obj.serial_ = serialport(COM,baudrate,"Timeout",0.5);
             obj.send_data_frame = uint8([0x55, 0xAA, 0x1e, 0x03, 0x01, 0x00, 0x00, 0x00, 0x0a, 0x00, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0x00, 0x08, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0x00]);
