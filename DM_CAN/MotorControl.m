@@ -267,15 +267,32 @@ classdef MotorControl < handle
         end
 
         
-        function changeMasterID(obj, Motor, MasterID)
+        function success = changeMasterID(obj, Motor, MasterID)
             % change the MasterID of the motor 改变电机主机ID
             % :param Motor: Motor object 电机对象
             % :param MasterID: MasterID 主机ID
             motorid = MasterID;
+            RID=7;
             can_id_l = bitand(motorid, 255);
             can_id_h = bitshift(motorid, -8);
+            max_retries = 10;
+            retry_interval = 0.05; % retry times
             write_data = uint8([uint8(can_id_l), uint8(can_id_h), 0, 0]);
             obj.write_motor_param(Motor, 7, write_data);
+            for i = 1:max_retries
+                pause(retry_interval);
+                obj.recv_set_param_data();
+                
+                if isKey(obj.motors_map, Motor.SlaveID)
+                    if obj.motors_map(Motor.SlaveID).getParam(RID)==uint8(MasterID)
+                        success = true;
+                        return;
+                    else
+                        success = false;
+                        return;
+                    end
+                end
+            end
         end
         
         function save_motor_param(obj, Motor)
