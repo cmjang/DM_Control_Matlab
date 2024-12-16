@@ -235,3 +235,54 @@ if MotorControl1.change_motor_param(motor,DM_Reg.UV_Value,12.6)
 end
 ```
 
+### 7.内部寄存器参数列表
+
+其中RW：可读写 RO：只读。对应的变量名可以直接用于DM_Reg中。
+
+| 寄存器地址(十进制) | 变量      | 描述           | 读写 | 范围            | 数据类型 |
+| ------------------ | --------- | -------------- | ---- | --------------- | -------- |
+| 0                  | UV_Value  | 低压保护值     | RW   | (10.0,3.4E38]   | float    |
+| 1                  | KT_Value  | 扭矩系数       | RW   | [0.0,3.4E38]    | float    |
+| 2                  | OT_Value  | 过温保护值     | RW   | [80.0,200)      | float    |
+| 3                  | OC_Value  | 过流保护值     | RW   | (0.0,1.0)       | float    |
+| 4                  | ACC       | 加速度         | RW   | (0.0,3.4E38)    | float    |
+| 5                  | DEC       | 减速度         | RW   | [-3.4E38,0.0)   | float    |
+| 6                  | MAX_SPD   | 最大速度       | RW   | (0.0,3.4E38]    | float    |
+| 7                  | MST_ID    | 反馈ID         | RW   | [0,0x7FF]       | uint32   |
+| 8                  | ESC_ID    | 接收ID         | RW   | [0,0x7FF]       | uint32   |
+| 9                  | TIMEOUT   | 超时警报时间   | RW   | [0,2^32-1]      | uint32   |
+| 10                 | CTRL_MODE | 控制模式       | RW   | [1,4]           | uint32   |
+| 11                 | Damp      | 电机粘滞系数   | RO   | /               | float    |
+| 12                 | Inertia   | 电机转动惯量   | RO   | /               | float    |
+| 13                 | hw_ver    | 保留           | RO   | /               | uint32   |
+| 14                 | sw_ver    | 软件版本号     | RO   | /               | uint32   |
+| 15                 | SN        | 保留           | RO   | /               | uint32   |
+| 16                 | NPP       | 电机极对数     | RO   | /               | uint32   |
+| 17                 | Rs        | 电机相电阻     | RO   | /               | float    |
+| 18                 | Ls        | 电机相电感     | RO   | /               | float    |
+| 19                 | Flux      | 电机磁链值     | RO   | /               | float    |
+| 20                 | Gr        | 齿轮减速比     | RO   | /               | float    |
+| 21                 | PMAX      | 位置映射范围   | RW   | (0.0,3.4E38]    | float    |
+| 22                 | VMAX      | 速度映射范围   | RW   | (0.0,3.4E38]    | float    |
+| 23                 | TMAX      | 扭矩映射范围   | RW   | (0.0,3.4E38]    | float    |
+| 24                 | I_BW      | 电流环控制带宽 | RW   | [100.0,10000.0] | float    |
+| 25                 | KP_ASR    | 速度环Kp       | RW   | [0.0,3.4E38]    | float    |
+| 26                 | KI_ASR    | 速度环Ki       | RW   | [0.0,3.4E38]    | float    |
+| 27                 | KP_APR    | 位置环Kp       | RW   | [0.0,3.4E38]    | float    |
+| 28                 | KI_APR    | 位置环Ki       | RW   | [0.0,3.4E38]    | float    |
+| 29                 | OV_Value  | 过压保护值     | RW   | TBD             | float    |
+| 30                 | GREF      | 齿轮力矩效率   | RW   | (0.0,1.0]       | float    |
+| 31                 | Deta      | 速度环阻尼系数 | RW   | [1.0,30.0]      | float    |
+| 32                 | V_BW      | 速度环滤波带宽 | RW   | (0.0,500.0)     | float    |
+| 33                 | IQ_c1     | 电流环增强系数 | RW   | [100.0,10000.0] | float    |
+| 34                 | VL_c1     | 速度环增强系数 | RW   | (0.0,10000.0]   | float    |
+| 35                 | can_br    | CAN波特率代码  | RW   | [0,4]           | uint32   |
+| 36                 | sub_ver   | 子版本号       | RO   |                 | uint32   |
+| 50                 | u_off     | u相偏置        | RO   |                 | float    |
+| 51                 | v_off     | v相偏置        | RO   |                 | float    |
+| 52                 | k1        | 补偿因子1      | RO   |                 | float    |
+| 53                 | k2        | 补偿因子2      | RO   |                 | float    |
+| 54                 | m_off     | 角度偏移       | RO   |                 | float    |
+| 55                 | dir       | 方向           | RO   |                 | float    |
+| 80                 | p_m       | 电机位置       | RO   |                 | float    |
+| 81                 | xout      | 输出轴位置     | RO   |                 | float    |
